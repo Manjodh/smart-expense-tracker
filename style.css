@@ -745,3 +745,31 @@ tr:hover td {
         min-width: 680px;
     }
 }
+
+/* REPORTS */
+
+.report-filter {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.report-filter input {
+    width: 180px;
+}
+
+.report-filter button {
+    height: 48px;
+}
+
+@media (max-width: 560px) {
+    .report-filter {
+        width: 100%;
+    }
+
+    .report-filter input,
+    .report-filter button {
+        width: 100%;
+    }
+}

@@ -24,6 +24,7 @@ $pageTitle = $pageTitle ?? 'Smart Expense Tracker';
         <a class="brand" href="dashboard.php"><span>💎</span> SmartSpend</a>
         <nav>
             <a class="<?= active_nav('dashboard.php') ?>" href="dashboard.php">Dashboard</a>
+            <a class="<?= active_nav('reports.php') ?>" href="reports.php">Reports</a>
             <a class="<?= active_nav('add_expense.php') ?>" href="add_expense.php">Add Expense</a>
             <a class="<?= active_nav('categories.php') ?>" href="categories.php">Categories</a>
             <a class="<?= active_nav('budgets.php') ?>" href="budgets.php">Budgets</a>
