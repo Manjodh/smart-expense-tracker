@@ -28,11 +28,13 @@ function flash($key, $message = null) {
         $_SESSION['flash'][$key] = $message;
         return;
     }
+
     if (isset($_SESSION['flash'][$key])) {
         $msg = $_SESSION['flash'][$key];
         unset($_SESSION['flash'][$key]);
         return $msg;
     }
+
     return null;
 }
 
@@ -66,17 +68,20 @@ function upload_receipt($file) {
     }
 
     $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
     if (!in_array($extension, $allowedExtensions, true)) {
         return [null, 'Only JPG, JPEG, PNG, and PDF receipts are allowed.'];
     }
 
     $finfo = new finfo(FILEINFO_MIME_TYPE);
     $mimeType = $finfo->file($file['tmp_name']);
+
     if (!in_array($mimeType, $allowedMimeTypes, true)) {
         return [null, 'Invalid receipt file type.'];
     }
 
     $uploadDir = __DIR__ . '/uploads/receipts/';
+
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0755, true);
     }
@@ -89,5 +94,89 @@ function upload_receipt($file) {
     }
 
     return ['uploads/receipts/' . $uniqueName, null];
+}
+
+function get_user_categories($pdo, $userId) {
+    $stmt = $pdo->prepare("
+        SELECT name
+        FROM categories
+        WHERE user_id = ?
+        ORDER BY name ASC
+    ");
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll();
+}
+
+function get_monthly_stats($pdo, $userId, $monthYear) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            COALESCE(SUM(amount), 0) AS total_spending,
+            COUNT(*) AS total_expenses
+        FROM expenses
+        WHERE user_id = ?
+        AND DATE_FORMAT(expense_date, '%Y-%m') = ?
+    ");
+    $stmt->execute([$userId, $monthYear]);
+
+    return $stmt->fetch();
+}
+
+function get_category_totals($pdo, $userId, $monthYear = null) {
+    $sql = "
+        SELECT category, SUM(amount) AS total
+        FROM expenses
+        WHERE user_id = ?
+    ";
+
+    $params = [$userId];
+
+    if ($monthYear !== null) {
+        $sql .= " AND DATE_FORMAT(expense_date, '%Y-%m') = ?";
+        $params[] = $monthYear;
+    }
+
+    $sql .= "
+        GROUP BY category
+        ORDER BY total DESC
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll();
+}
+
+function get_budget_progress($pdo, $userId) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            b.category,
+            b.limit_amount,
+            b.month_year,
+            COALESCE(SUM(e.amount), 0) AS spent
+        FROM budgets b
+        LEFT JOIN expenses e
+            ON e.user_id = b.user_id
+            AND e.category = b.category
+            AND DATE_FORMAT(e.expense_date, '%Y-%m') = b.month_year
+        WHERE b.user_id = ?
+        GROUP BY b.id
+        ORDER BY b.month_year DESC, b.category ASC
+    ");
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll();
+}
+
+function get_user_goals($pdo, $userId) {
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM goals
+        WHERE user_id = ?
+        ORDER BY id DESC
+    ");
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll();
 }
 ?>
