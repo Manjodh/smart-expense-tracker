@@ -773,3 +773,30 @@ tr:hover td {
         width: 100%;
     }
 }
+
+.report-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.report-actions .btn {
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+}
+
+@media (max-width: 560px) {
+    .report-actions,
+    .report-filter {
+        width: 100%;
+    }
+
+    .report-actions .btn,
+    .report-filter input,
+    .report-filter button {
+        width: 100%;
+        justify-content: center;
+    }
+}
