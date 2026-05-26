@@ -60,14 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $receiptPath = $expense['receipt_path'];
 
             if (!empty($_FILES['receipt']['name'])) {
-                $newReceiptPath = upload_receipt($_FILES['receipt']);
+                [$newReceiptPath, $uploadError] = upload_receipt($_FILES['receipt']);
 
-                if ($newReceiptPath === false) {
-                    flash('error', 'Invalid receipt file. Only JPG, JPEG, PNG, and PDF files are allowed.');
-                    redirect('edit_expense.php?id=' . $expenseId);
-                }
+                if ($uploadError) {
+                    flash('error', $uploadError);
+                        redirect('edit_expense.php?id=' . $expenseId);
+            }   
 
-                $receiptPath = $newReceiptPath;
+            $receiptPath = $newReceiptPath;
             }
 
             $stmt = $pdo->prepare("

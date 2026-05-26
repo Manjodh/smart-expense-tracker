@@ -42,10 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Please select a valid category.');
         } else {
 
-            $receiptPath = upload_receipt($_FILES['receipt'] ?? null);
+            [$receiptPath, $uploadError] = upload_receipt($_FILES['receipt'] ?? null);
 
-            if ($receiptPath === false) {
-                flash('error', 'Invalid receipt file. Only JPG, JPEG, PNG, and PDF files are allowed.');
+            if ($uploadError) {
+                    flash('error', $uploadError);
             } else {
 
                 $stmt = $pdo->prepare("

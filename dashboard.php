@@ -56,35 +56,11 @@ if ($to !== '') {
 $whereSql = implode(' AND ', $where);
 $currentMonth = date('Y-m');
 
-$categoryStmt = $pdo->prepare("
-    SELECT name
-    FROM categories
-    WHERE user_id = ?
-    ORDER BY name ASC
-");
-$categoryStmt->execute([$userId]);
-$categories = $categoryStmt->fetchAll();
-
-$stmt = $pdo->prepare("
-    SELECT 
-        COALESCE(SUM(amount),0) AS total_spending,
-        COUNT(*) AS total_expenses
-    FROM expenses
-    WHERE user_id = ?
-    AND DATE_FORMAT(expense_date,'%Y-%m') = ?
-");
-$stmt->execute([$userId, $currentMonth]);
-$stats = $stmt->fetch();
-
-$stmt = $pdo->prepare("
-    SELECT category, SUM(amount) AS total
-    FROM expenses
-    WHERE user_id = ?
-    GROUP BY category
-    ORDER BY total DESC
-");
-$stmt->execute([$userId]);
-$categoryTotals = $stmt->fetchAll();
+$categories = get_user_categories($pdo, $userId);
+$stats = get_monthly_stats($pdo, $userId, $currentMonth);
+$categoryTotals = get_category_totals($pdo, $userId);
+$budgets = get_budget_progress($pdo, $userId);
+$goals = get_user_goals($pdo, $userId);
 
 $countStmt = $pdo->prepare("
     SELECT COUNT(*)
@@ -118,31 +94,6 @@ $expenseStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 $expenseStmt->execute();
 
 $expenses = $expenseStmt->fetchAll();
-
-$stmt = $pdo->prepare("
-    SELECT 
-        b.category,
-        b.limit_amount,
-        COALESCE(SUM(e.amount),0) AS spent
-    FROM budgets b
-    LEFT JOIN expenses e
-        ON e.user_id = b.user_id
-        AND e.category = b.category
-        AND DATE_FORMAT(e.expense_date,'%Y-%m') = b.month_year
-    WHERE b.user_id = ?
-    GROUP BY b.id
-");
-$stmt->execute([$userId]);
-$budgets = $stmt->fetchAll();
-
-$stmt = $pdo->prepare("
-    SELECT *
-    FROM goals
-    WHERE user_id = ?
-    ORDER BY id DESC
-");
-$stmt->execute([$userId]);
-$goals = $stmt->fetchAll();
 
 $highestCategory = $categoryTotals[0]['category'] ?? 'N/A';
 
@@ -266,17 +217,16 @@ function pagination_url($pageNumber, $limitValue) {
             <select name="category">
                 <option value="">All Categories</option>
 
-                
-<?php foreach ($categories as $cat): ?>
+                <?php foreach ($categories as $cat): ?>
 
-    <option
-        value="<?= e($cat['name']) ?>"
-        <?= $category === $cat['name'] ? 'selected' : '' ?>
-    >
-        <?= e($cat['name']) ?>
-    </option>
+                    <option
+                        value="<?= e($cat['name']) ?>"
+                        <?= $category === $cat['name'] ? 'selected' : '' ?>
+                    >
+                        <?= e($cat['name']) ?>
+                    </option>
 
-<?php endforeach; ?>
+                <?php endforeach; ?>
 
             </select>
         </div>
@@ -515,7 +465,7 @@ function pagination_url($pageNumber, $limitValue) {
             </div>
 
             <div class="progress">
-                <span style="width:<?= min($progress,100) ?>%"></span>
+                <span style="width: <?= min($progress,100) ?>%"></span>
             </div>
 
             <p class="muted">
