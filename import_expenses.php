@@ -122,10 +122,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
         redirect('import_expenses.php');
     }
 
-    foreach ($rows as $row) {
+    foreach ($rows as $index => $row) {
         $matchedCategory = match_category_from_rules($merchantRules, $row['note']);
         $category = $matchedCategory ?: $fallbackCategory;
 
+        $row['row_key'] = $index;
         $row['category'] = $category;
         $row['matched_by_rule'] = $matchedCategory !== null;
         $row['is_duplicate'] = imported_expense_exists($pdo, $userId, $row, $category);
@@ -138,11 +139,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
     $rows = $_SESSION['csv_import_rows'] ?? [];
+    $selectedCategories = $_POST['row_category'] ?? [];
 
     if (!$rows) {
         flash('error', 'Import session expired. Please upload the CSV again.');
         redirect('import_expenses.php');
     }
+
+    $validCategoryNames = array_column($categories, 'name');
 
     $stmt = $pdo->prepare("
         INSERT INTO expenses
@@ -155,12 +159,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
     $skipped = 0;
 
     foreach ($rows as $row) {
+        $rowKey = (string)$row['row_key'];
+        $category = trim($selectedCategories[$rowKey] ?? $row['category']);
+
+        if (!in_array($category, $validCategoryNames, true)) {
+            $skipped++;
+            continue;
+        }
+
         if (!empty($row['is_duplicate'])) {
             $skipped++;
             continue;
         }
 
-        if (imported_expense_exists($pdo, $userId, $row, $row['category'])) {
+        if (imported_expense_exists($pdo, $userId, $row, $category)) {
             $skipped++;
             continue;
         }
@@ -168,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
         $stmt->execute([
             $userId,
             $row['amount'],
-            $row['category'],
+            $category,
             $row['note'],
             $row['expense_date']
         ]);
@@ -180,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
 
     flash(
         'success',
-        $imported . ' expenses imported. ' . $skipped . ' duplicates skipped.'
+        $imported . ' expenses imported. ' . $skipped . ' rows skipped.'
     );
 
     redirect('dashboard.php');
@@ -195,6 +207,7 @@ require_once 'header.php';
 
     <p class="muted">
         Upload your CommBank CSV statement. Merchant rules will automatically assign categories where possible.
+        You can override each category before importing.
     </p>
 
     <?php if (!$categories): ?>
@@ -293,76 +306,88 @@ require_once 'header.php';
                     <?= $fallbackCount ?> fallback.
                 </p>
             </div>
+        </div>
+
+        <form method="POST">
+
+            <div class="table-responsive">
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Match</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <?php foreach ($previewRows as $row): ?>
+
+                            <tr>
+                                <td>
+                                    <?php if (!empty($row['is_duplicate'])): ?>
+                                        <span class="warning">Duplicate</span>
+                                    <?php else: ?>
+                                        <span class="badge">New</span>
+                                    <?php endif; ?>
+                                </td>
+
+                                <td><?= e($row['expense_date']) ?></td>
+
+                                <td>
+                                    <select
+                                        name="row_category[<?= e($row['row_key']) ?>]"
+                                        <?= !empty($row['is_duplicate']) ? 'disabled' : '' ?>
+                                    >
+                                        <?php foreach ($categories as $cat): ?>
+                                            <option
+                                                value="<?= e($cat['name']) ?>"
+                                                <?= $row['category'] === $cat['name'] ? 'selected' : '' ?>
+                                            >
+                                                <?= e($cat['name']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </td>
+
+                                <td>
+                                    <?php if (!empty($row['matched_by_rule'])): ?>
+                                        <span class="badge">Rule</span>
+                                    <?php else: ?>
+                                        <span class="muted">Fallback</span>
+                                    <?php endif; ?>
+                                </td>
+
+                                <td><?= e($row['note']) ?></td>
+
+                                <td><?= money($row['amount']) ?></td>
+                            </tr>
+
+                        <?php endforeach; ?>
+
+                    </tbody>
+                </table>
+
+            </div>
 
             <?php if ($newCount > 0): ?>
-                <form method="POST">
+                <div class="action-row">
                     <button type="submit" name="confirm_import" value="1">
                         Import <?= $newCount ?> New Expenses
                     </button>
-                </form>
+                </div>
+            <?php else: ?>
+                <p class="muted" style="margin-top: 18px;">
+                    All rows are duplicates. Nothing new to import.
+                </p>
             <?php endif; ?>
-        </div>
 
-        <div class="table-responsive">
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Status</th>
-                        <th>Date</th>
-                        <th>Category</th>
-                        <th>Match</th>
-                        <th>Description</th>
-                        <th>Amount</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-
-                    <?php foreach ($previewRows as $row): ?>
-
-                        <tr>
-                            <td>
-                                <?php if (!empty($row['is_duplicate'])): ?>
-                                    <span class="warning">Duplicate</span>
-                                <?php else: ?>
-                                    <span class="badge">New</span>
-                                <?php endif; ?>
-                            </td>
-
-                            <td><?= e($row['expense_date']) ?></td>
-
-                            <td>
-                                <span class="badge">
-                                    <?= e($row['category']) ?>
-                                </span>
-                            </td>
-
-                            <td>
-                                <?php if (!empty($row['matched_by_rule'])): ?>
-                                    <span class="badge">Rule</span>
-                                <?php else: ?>
-                                    <span class="muted">Fallback</span>
-                                <?php endif; ?>
-                            </td>
-
-                            <td><?= e($row['note']) ?></td>
-
-                            <td><?= money($row['amount']) ?></td>
-                        </tr>
-
-                    <?php endforeach; ?>
-
-                </tbody>
-            </table>
-
-        </div>
-
-        <?php if ($newCount === 0): ?>
-            <p class="muted" style="margin-top: 18px;">
-                All rows are duplicates. Nothing new to import.
-            </p>
-        <?php endif; ?>
+        </form>
 
     </div>
 
