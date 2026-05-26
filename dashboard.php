@@ -61,6 +61,8 @@ $stats = get_monthly_stats($pdo, $userId, $currentMonth);
 $categoryTotals = get_category_totals($pdo, $userId);
 $budgets = get_budget_progress($pdo, $userId);
 $goals = get_user_goals($pdo, $userId);
+$dueRecurringExpenses = get_due_recurring_expenses($pdo, $userId);
+$upcomingRecurringExpenses = get_upcoming_recurring_expenses($pdo, $userId);
 
 $countStmt = $pdo->prepare("
     SELECT COUNT(*)
@@ -132,9 +134,136 @@ function pagination_url($pageNumber, $limitValue) {
     </div>
 
     <div class="card">
-        <h3>Savings Goals</h3>
-        <div class="value"><?= count($goals) ?></div>
+        <h3>Recurring Due</h3>
+        <div class="value"><?= count($dueRecurringExpenses) ?></div>
     </div>
+
+    <div class="table-card">
+
+    <div class="table-header-row">
+        <div>
+            <h3>Recurring Expense Alerts</h3>
+            <p class="muted">
+                Track bills and subscriptions that are due now or coming soon.
+            </p>
+        </div>
+
+        <a href="recurring_expenses.php" class="btn secondary">
+            Manage Recurring
+        </a>
+    </div>
+
+    <?php if (!$dueRecurringExpenses && !$upcomingRecurringExpenses): ?>
+
+        <p class="muted">No recurring expenses due soon.</p>
+
+    <?php else: ?>
+
+        <?php if ($dueRecurringExpenses): ?>
+
+            <h3>Due Now</h3>
+
+            <div class="table-responsive">
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Due Date</th>
+                            <th>Category</th>
+                            <th>Note</th>
+                            <th>Amount</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <?php foreach ($dueRecurringExpenses as $item): ?>
+
+                            <tr>
+                                <td><?= e($item['next_due_date']) ?></td>
+
+                                <td>
+                                    <span class="badge">
+                                        <?= e($item['category']) ?>
+                                    </span>
+                                </td>
+
+                                <td><?= e($item['note']) ?></td>
+
+                                <td><?= money($item['amount']) ?></td>
+
+                                <td>
+                                    <a
+                                        class="btn"
+                                        href="recurring_expenses.php?generate=<?= $item['id'] ?>"
+                                        onclick="return confirm('Generate this recurring expense now?')"
+                                    >
+                                        Generate
+                                    </a>
+                                </td>
+                            </tr>
+
+                        <?php endforeach; ?>
+
+                    </tbody>
+                </table>
+
+            </div>
+
+        <?php endif; ?>
+
+        <?php if ($upcomingRecurringExpenses): ?>
+
+            <h3 style="margin-top:24px;">Upcoming Soon</h3>
+
+            <div class="table-responsive">
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Due Date</th>
+                            <th>Category</th>
+                            <th>Note</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <?php foreach ($upcomingRecurringExpenses as $item): ?>
+
+                            <tr>
+                                <td><?= e($item['next_due_date']) ?></td>
+
+                                <td>
+                                    <span class="badge">
+                                        <?= e($item['category']) ?>
+                                    </span>
+                                </td>
+
+                                <td><?= e($item['note']) ?></td>
+
+                                <td><?= money($item['amount']) ?></td>
+
+                                <td>
+                                    <span class="muted">Upcoming</span>
+                                </td>
+                            </tr>
+
+                        <?php endforeach; ?>
+
+                    </tbody>
+                </table>
+
+            </div>
+
+        <?php endif; ?>
+
+    <?php endif; ?>
+
+</div>
 
 </div>
 

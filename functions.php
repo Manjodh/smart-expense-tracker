@@ -179,4 +179,42 @@ function get_user_goals($pdo, $userId) {
 
     return $stmt->fetchAll();
 }
+function get_due_recurring_expenses($pdo, $userId, $limit = 5) {
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM recurring_expenses
+        WHERE user_id = ?
+        AND is_active = 1
+        AND next_due_date <= CURDATE()
+        ORDER BY next_due_date ASC
+        LIMIT ?
+    ");
+
+    $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function get_upcoming_recurring_expenses($pdo, $userId, $days = 7, $limit = 5) {
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM recurring_expenses
+        WHERE user_id = ?
+        AND is_active = 1
+        AND next_due_date > CURDATE()
+        AND next_due_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+        ORDER BY next_due_date ASC
+        LIMIT ?
+    ");
+
+    $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $days, PDO::PARAM_INT);
+    $stmt->bindValue(3, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
 ?>
