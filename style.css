@@ -608,6 +608,57 @@ tr:hover td {
     color: #02131a !important;
 }
 
+.table-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.limit-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.limit-form select {
+    width: 90px;
+    height: 44px;
+    padding: 0 12px;
+}
+
+.pagination {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.page-link {
+    min-width: 42px;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    color: var(--text);
+}
+
+.page-link:hover,
+.page-link.active {
+    background: linear-gradient(135deg, var(--cyan), var(--green));
+    color: #02131a;
+}
+
+.page-link.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
 /* RESPONSIVE */
 
 @media (max-width: 1180px) {
