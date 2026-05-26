@@ -1,38 +1,161 @@
 <?php
+$pageTitle = 'Add Expense';
+
 require_once 'db.php';
 require_once 'functions.php';
+
 require_login();
-$pageTitle = 'Add Expense';
-$categories = ['Food','Transport','Rent','Utilities','Shopping','Health','Entertainment','Education','Travel','Other'];
+
+$userId = $_SESSION['user_id'];
+
+$stmt = $pdo->prepare("
+    SELECT name
+    FROM categories
+    WHERE user_id = ?
+    ORDER BY name ASC
+");
+$stmt->execute([$userId]);
+$categories = $stmt->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $amount = trim($_POST['amount'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $note = trim($_POST['note'] ?? '');
-    $date = trim($_POST['expense_date'] ?? '');
-    [$receiptPath, $uploadError] = upload_receipt($_FILES['receipt'] ?? null);
+    $expenseDate = trim($_POST['expense_date'] ?? '');
 
-    if (!is_numeric($amount) || $amount <= 0 || $category === '' || $date === '') {
-        flash('error', 'Enter a valid amount, category, and date.');
-    } elseif ($uploadError) {
-        flash('error', $uploadError);
+    if ($amount === '' || $category === '' || $expenseDate === '') {
+        flash('error', 'Amount, category, and date are required.');
+    } elseif (!is_numeric($amount) || $amount <= 0) {
+        flash('error', 'Please enter a valid amount.');
     } else {
-        $stmt = $pdo->prepare('INSERT INTO expenses (user_id, amount, category, note, expense_date, receipt_path) VALUES (?, ?, ?, ?, ?, ?)');
-        $stmt->execute([current_user_id(), $amount, $category, $note, $date, $receiptPath]);
-        flash('success', 'Expense added successfully.');
-        redirect('dashboard.php');
+
+        $checkStmt = $pdo->prepare("
+            SELECT id
+            FROM categories
+            WHERE user_id = ?
+            AND name = ?
+        ");
+        $checkStmt->execute([$userId, $category]);
+
+        if (!$checkStmt->fetch()) {
+            flash('error', 'Please select a valid category.');
+        } else {
+
+            $receiptPath = upload_receipt($_FILES['receipt'] ?? null);
+
+            if ($receiptPath === false) {
+                flash('error', 'Invalid receipt file. Only JPG, JPEG, PNG, and PDF files are allowed.');
+            } else {
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO expenses
+                    (user_id, amount, category, note, expense_date, receipt_path, created_at)
+                    VALUES
+                    (?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                $stmt->execute([
+                    $userId,
+                    $amount,
+                    $category,
+                    $note,
+                    $expenseDate,
+                    $receiptPath
+                ]);
+
+                flash('success', 'Expense added successfully.');
+                redirect('dashboard.php');
+            }
+        }
     }
 }
-include 'header.php';
+
+require_once 'header.php';
 ?>
-<section class="form-card glass-panel narrow">
-    <h2>Add a new expense</h2>
-    <form method="POST" enctype="multipart/form-data" class="stack-form">
-        <label>Amount<input type="number" step="0.01" min="0.01" name="amount" required></label>
-        <label>Category<select name="category" required><?php foreach ($categories as $cat): ?><option value="<?= e($cat) ?>"><?= e($cat) ?></option><?php endforeach; ?></select></label>
-        <label>Expense Date<input type="date" name="expense_date" value="<?= e(date('Y-m-d')) ?>" required></label>
-        <label>Note<textarea name="note" rows="4" placeholder="Optional details"></textarea></label>
-        <label>Receipt JPG, PNG, or PDF<input type="file" name="receipt" accept=".jpg,.jpeg,.png,.pdf"></label>
-        <button class="btn primary full" type="submit">Save Expense</button>
-    </form>
-</section>
-<?php include 'footer.php'; ?>
+
+<div class="table-card form-card">
+
+    <h3>Add New Expense</h3>
+
+    <?php if (!$categories): ?>
+
+        <p class="muted">
+            You need to create at least one category before adding an expense.
+        </p>
+
+        <div class="action-row">
+            <a href="categories.php" class="btn">
+                Add Category
+            </a>
+        </div>
+
+    <?php else: ?>
+
+        <form method="POST" enctype="multipart/form-data" class="form-grid">
+
+            <div class="form-row">
+                <label>Amount</label>
+                <input type="number" step="0.01" name="amount" placeholder="0.00" required>
+            </div>
+
+            <div class="form-row">
+                <label>Category</label>
+
+                <select name="category" required>
+                    <option value="">Select category</option>
+
+                    <?php foreach ($categories as $cat): ?>
+                        <option value="<?= e($cat['name']) ?>">
+                            <?= e($cat['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label>Expense Date</label>
+
+                <input
+                    type="text"
+                    name="expense_date"
+                    class="date-picker"
+                    value="<?= date('Y-m-d') ?>"
+                    required
+                >
+            </div>
+
+            <div class="form-row">
+                <label>Receipt</label>
+
+                <input
+                    type="file"
+                    name="receipt"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                >
+            </div>
+
+            <div class="form-row full">
+                <label>Note</label>
+
+                <textarea
+                    name="note"
+                    rows="4"
+                    placeholder="Optional note..."
+                ></textarea>
+            </div>
+
+            <div class="form-row full">
+                <button type="submit">
+                    Save Expense
+                </button>
+            </div>
+
+        </form>
+
+    <?php endif; ?>
+
+</div>
+
+<?php require_once 'footer.php'; ?>

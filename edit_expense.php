@@ -1,46 +1,210 @@
 <?php
+$pageTitle = 'Edit Expense';
+
 require_once 'db.php';
 require_once 'functions.php';
+
 require_login();
-$pageTitle = 'Edit Expense';
-$id = (int)($_GET['id'] ?? 0);
-$stmt = $pdo->prepare('SELECT * FROM expenses WHERE id = ? AND user_id = ?');
-$stmt->execute([$id, current_user_id()]);
+
+$userId = $_SESSION['user_id'];
+$expenseId = (int)($_GET['id'] ?? 0);
+
+$stmt = $pdo->prepare("
+    SELECT *
+    FROM expenses
+    WHERE id = ?
+    AND user_id = ?
+");
+$stmt->execute([$expenseId, $userId]);
 $expense = $stmt->fetch();
-if (!$expense) { flash('error', 'Expense not found.'); redirect('dashboard.php'); }
-$categories = ['Food','Transport','Rent','Utilities','Shopping','Health','Entertainment','Education','Travel','Other'];
+
+if (!$expense) {
+    flash('error', 'Expense not found.');
+    redirect('dashboard.php');
+}
+
+$stmt = $pdo->prepare("
+    SELECT name
+    FROM categories
+    WHERE user_id = ?
+    ORDER BY name ASC
+");
+$stmt->execute([$userId]);
+$categories = $stmt->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $amount = trim($_POST['amount'] ?? '');
     $category = trim($_POST['category'] ?? '');
     $note = trim($_POST['note'] ?? '');
-    $date = trim($_POST['expense_date'] ?? '');
-    $receiptPath = $expense['receipt_path'];
-    [$newReceipt, $uploadError] = upload_receipt($_FILES['receipt'] ?? null);
-    if ($newReceipt) $receiptPath = $newReceipt;
+    $expenseDate = trim($_POST['expense_date'] ?? '');
 
-    if (!is_numeric($amount) || $amount <= 0 || $category === '' || $date === '') {
-        flash('error', 'Enter a valid amount, category, and date.');
-    } elseif ($uploadError) {
-        flash('error', $uploadError);
+    if ($amount === '' || $category === '' || $expenseDate === '') {
+        flash('error', 'Amount, category, and date are required.');
+    } elseif (!is_numeric($amount) || $amount <= 0) {
+        flash('error', 'Please enter a valid amount.');
     } else {
-        $stmt = $pdo->prepare('UPDATE expenses SET amount=?, category=?, note=?, expense_date=?, receipt_path=? WHERE id=? AND user_id=?');
-        $stmt->execute([$amount, $category, $note, $date, $receiptPath, $id, current_user_id()]);
-        flash('success', 'Expense updated successfully.');
-        redirect('dashboard.php');
+
+        $checkStmt = $pdo->prepare("
+            SELECT id
+            FROM categories
+            WHERE user_id = ?
+            AND name = ?
+        ");
+        $checkStmt->execute([$userId, $category]);
+
+        if (!$checkStmt->fetch()) {
+            flash('error', 'Please select a valid category.');
+        } else {
+
+            $receiptPath = $expense['receipt_path'];
+
+            if (!empty($_FILES['receipt']['name'])) {
+                $newReceiptPath = upload_receipt($_FILES['receipt']);
+
+                if ($newReceiptPath === false) {
+                    flash('error', 'Invalid receipt file. Only JPG, JPEG, PNG, and PDF files are allowed.');
+                    redirect('edit_expense.php?id=' . $expenseId);
+                }
+
+                $receiptPath = $newReceiptPath;
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE expenses
+                SET amount = ?,
+                    category = ?,
+                    note = ?,
+                    expense_date = ?,
+                    receipt_path = ?
+                WHERE id = ?
+                AND user_id = ?
+            ");
+
+            $stmt->execute([
+                $amount,
+                $category,
+                $note,
+                $expenseDate,
+                $receiptPath,
+                $expenseId,
+                $userId
+            ]);
+
+            flash('success', 'Expense updated successfully.');
+            redirect('dashboard.php');
+        }
     }
 }
-include 'header.php';
+
+require_once 'header.php';
 ?>
-<section class="form-card glass-panel narrow">
-    <h2>Edit expense</h2>
-    <form method="POST" enctype="multipart/form-data" class="stack-form">
-        <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="<?= e($expense['amount']) ?>" required></label>
-        <label>Category<select name="category" required><?php foreach ($categories as $cat): ?><option value="<?= e($cat) ?>" <?= $expense['category']===$cat?'selected':'' ?>><?= e($cat) ?></option><?php endforeach; ?></select></label>
-        <label>Expense Date<input type="date" name="expense_date" value="<?= e($expense['expense_date']) ?>" required></label>
-        <label>Note<textarea name="note" rows="4"><?= e($expense['note']) ?></textarea></label>
-        <?php if ($expense['receipt_path']): ?><p>Current receipt: <a class="table-link" target="_blank" href="<?= e($expense['receipt_path']) ?>">View receipt</a></p><?php endif; ?>
-        <label>Replace Receipt<input type="file" name="receipt" accept=".jpg,.jpeg,.png,.pdf"></label>
-        <button class="btn primary full" type="submit">Update Expense</button>
-    </form>
-</section>
-<?php include 'footer.php'; ?>
+
+<div class="table-card form-card">
+
+    <h3>Edit Expense</h3>
+
+    <?php if (!$categories): ?>
+
+        <p class="muted">
+            You need to create at least one category before editing this expense.
+        </p>
+
+        <div class="action-row">
+            <a href="categories.php" class="btn">
+                Add Category
+            </a>
+        </div>
+
+    <?php else: ?>
+
+        <form method="POST" enctype="multipart/form-data" class="form-grid">
+
+            <div class="form-row">
+                <label>Amount</label>
+
+                <input
+                    type="number"
+                    step="0.01"
+                    name="amount"
+                    value="<?= e($expense['amount']) ?>"
+                    required
+                >
+            </div>
+
+            <div class="form-row">
+                <label>Category</label>
+
+                <select name="category" required>
+                    <option value="">Select category</option>
+
+                    <?php foreach ($categories as $cat): ?>
+                        <option
+                            value="<?= e($cat['name']) ?>"
+                            <?= $expense['category'] === $cat['name'] ? 'selected' : '' ?>
+                        >
+                            <?= e($cat['name']) ?>
+                        </option>
+                    <?php endforeach; ?>
+
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label>Expense Date</label>
+
+                <input
+                    type="text"
+                    name="expense_date"
+                    class="date-picker"
+                    value="<?= e($expense['expense_date']) ?>"
+                    required
+                >
+            </div>
+
+            <div class="form-row">
+                <label>Replace Receipt</label>
+
+                <input
+                    type="file"
+                    name="receipt"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                >
+            </div>
+
+            <?php if (!empty($expense['receipt_path'])): ?>
+                <div class="form-row full">
+                    <label>Current Receipt</label>
+
+                    <a
+                        class="receipt-link"
+                        href="<?= e($expense['receipt_path']) ?>"
+                        target="_blank"
+                    >
+                        View current receipt
+                    </a>
+                </div>
+            <?php endif; ?>
+
+            <div class="form-row full">
+                <label>Note</label>
+
+                <textarea
+                    name="note"
+                    rows="4"
+                ><?= e($expense['note']) ?></textarea>
+            </div>
+
+            <div class="form-row full">
+                <button type="submit">
+                    Update Expense
+                </button>
+            </div>
+
+        </form>
+
+    <?php endif; ?>
+
+</div>
+
+<?php require_once 'footer.php'; ?>

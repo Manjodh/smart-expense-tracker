@@ -56,6 +56,15 @@ if ($to !== '') {
 $whereSql = implode(' AND ', $where);
 $currentMonth = date('Y-m');
 
+$categoryStmt = $pdo->prepare("
+    SELECT name
+    FROM categories
+    WHERE user_id = ?
+    ORDER BY name ASC
+");
+$categoryStmt->execute([$userId]);
+$categories = $categoryStmt->fetchAll();
+
 $stmt = $pdo->prepare("
     SELECT 
         COALESCE(SUM(amount),0) AS total_spending,
@@ -257,26 +266,17 @@ function pagination_url($pageNumber, $limitValue) {
             <select name="category">
                 <option value="">All Categories</option>
 
-                <?php
-                $categories = [
-                    'Food',
-                    'Shopping',
-                    'Transport',
-                    'Bills',
-                    'Entertainment',
-                    'Health',
-                    'Other'
-                ];
-                ?>
+                
+<?php foreach ($categories as $cat): ?>
 
-                <?php foreach ($categories as $cat): ?>
-                    <option
-                        value="<?= e($cat) ?>"
-                        <?= $category === $cat ? 'selected' : '' ?>
-                    >
-                        <?= e($cat) ?>
-                    </option>
-                <?php endforeach; ?>
+    <option
+        value="<?= e($cat['name']) ?>"
+        <?= $category === $cat['name'] ? 'selected' : '' ?>
+    >
+        <?= e($cat['name']) ?>
+    </option>
+
+<?php endforeach; ?>
 
             </select>
         </div>
