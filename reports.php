@@ -19,7 +19,6 @@ $categoryTotals = get_category_totals($pdo, $userId, $selectedMonth);
 $totalSpending = (float)($stats['total_spending'] ?? 0);
 $totalExpenses = (int)($stats['total_expenses'] ?? 0);
 $highestCategory = $categoryTotals[0]['category'] ?? 'N/A';
-$highestAmount = $categoryTotals[0]['total'] ?? 0;
 $averageExpense = $totalExpenses > 0 ? $totalSpending / $totalExpenses : 0;
 
 $chartLabels = [];
@@ -41,17 +40,28 @@ require_once 'header.php';
             <p class="muted">View spending insights for a selected month.</p>
         </div>
 
-        <form method="GET" class="report-filter">
-            <input
-                type="text"
-                name="month"
-                class="month-picker"
-                value="<?= e($selectedMonth) ?>"
-                required
-            >
+        <div class="report-actions">
 
-            <button type="submit">View Report</button>
-        </form>
+            <form method="GET" class="report-filter">
+                <input
+                    type="text"
+                    name="month"
+                    class="month-picker"
+                    value="<?= e($selectedMonth) ?>"
+                    required
+                >
+
+                <button type="submit">View Report</button>
+            </form>
+
+            <a
+                class="btn secondary"
+                href="export_report.php?month=<?= e($selectedMonth) ?>"
+            >
+                Export CSV
+            </a>
+
+        </div>
     </div>
 
 </div>
