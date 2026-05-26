@@ -217,4 +217,30 @@ function get_upcoming_recurring_expenses($pdo, $userId, $days = 7, $limit = 5) {
     return $stmt->fetchAll();
 }
 
+function get_merchant_rules($pdo, $userId) {
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM merchant_rules
+        WHERE user_id = ?
+        ORDER BY keyword ASC
+    ");
+    $stmt->execute([$userId]);
+
+    return $stmt->fetchAll();
+}
+
+function match_category_from_rules($rules, $description) {
+    $description = strtolower($description);
+
+    foreach ($rules as $rule) {
+        $keyword = strtolower($rule['keyword']);
+
+        if ($keyword !== '' && strpos($description, $keyword) !== false) {
+            return $rule['category'];
+        }
+    }
+
+    return null;
+}
+
 ?>

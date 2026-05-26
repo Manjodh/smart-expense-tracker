@@ -8,6 +8,7 @@ require_login();
 
 $userId = current_user_id();
 $categories = get_user_categories($pdo, $userId);
+$merchantRules = get_merchant_rules($pdo, $userId);
 
 $previewRows = [];
 
@@ -81,10 +82,10 @@ function imported_expense_exists($pdo, $userId, $row, $category) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
-    $category = trim($_POST['category'] ?? '');
+    $fallbackCategory = trim($_POST['fallback_category'] ?? '');
 
-    if ($category === '') {
-        flash('error', 'Please select a category for imported expenses.');
+    if ($fallbackCategory === '') {
+        flash('error', 'Please select a fallback category.');
         redirect('import_expenses.php');
     }
 
@@ -94,10 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
         WHERE user_id = ?
         AND name = ?
     ");
-    $checkStmt->execute([$userId, $category]);
+    $checkStmt->execute([$userId, $fallbackCategory]);
 
     if (!$checkStmt->fetch()) {
-        flash('error', 'Please select a valid category.');
+        flash('error', 'Please select a valid fallback category.');
         redirect('import_expenses.php');
     }
 
@@ -122,33 +123,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
     }
 
     foreach ($rows as $row) {
+        $matchedCategory = match_category_from_rules($merchantRules, $row['note']);
+        $category = $matchedCategory ?: $fallbackCategory;
+
+        $row['category'] = $category;
+        $row['matched_by_rule'] = $matchedCategory !== null;
         $row['is_duplicate'] = imported_expense_exists($pdo, $userId, $row, $category);
+
         $previewRows[] = $row;
     }
 
     $_SESSION['csv_import_rows'] = $previewRows;
-    $_SESSION['csv_import_category'] = $category;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
     $rows = $_SESSION['csv_import_rows'] ?? [];
-    $category = $_SESSION['csv_import_category'] ?? '';
 
-    if (!$rows || $category === '') {
+    if (!$rows) {
         flash('error', 'Import session expired. Please upload the CSV again.');
-        redirect('import_expenses.php');
-    }
-
-    $checkStmt = $pdo->prepare("
-        SELECT id
-        FROM categories
-        WHERE user_id = ?
-        AND name = ?
-    ");
-    $checkStmt->execute([$userId, $category]);
-
-    if (!$checkStmt->fetch()) {
-        flash('error', 'Selected category no longer exists.');
         redirect('import_expenses.php');
     }
 
@@ -168,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
             continue;
         }
 
-        if (imported_expense_exists($pdo, $userId, $row, $category)) {
+        if (imported_expense_exists($pdo, $userId, $row, $row['category'])) {
             $skipped++;
             continue;
         }
@@ -176,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
         $stmt->execute([
             $userId,
             $row['amount'],
-            $category,
+            $row['category'],
             $row['note'],
             $row['expense_date']
         ]);
@@ -184,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
         $imported++;
     }
 
-    unset($_SESSION['csv_import_rows'], $_SESSION['csv_import_category']);
+    unset($_SESSION['csv_import_rows']);
 
     flash(
         'success',
@@ -202,8 +194,7 @@ require_once 'header.php';
     <h3>Import CommBank CSV</h3>
 
     <p class="muted">
-        Upload your CommBank CSV statement. Positive income rows will be skipped.
-        Duplicate expenses will be detected before import.
+        Upload your CommBank CSV statement. Merchant rules will automatically assign categories where possible.
     </p>
 
     <?php if (!$categories): ?>
@@ -223,10 +214,10 @@ require_once 'header.php';
         <form method="POST" enctype="multipart/form-data" class="form-grid">
 
             <div class="form-row">
-                <label>Default Category</label>
+                <label>Fallback Category</label>
 
-                <select name="category" required>
-                    <option value="">Select category</option>
+                <select name="fallback_category" required>
+                    <option value="">Select fallback category</option>
 
                     <?php foreach ($categories as $cat): ?>
                         <option value="<?= e($cat['name']) ?>">
@@ -249,11 +240,17 @@ require_once 'header.php';
 
             <div class="form-row full">
                 <button type="submit" name="preview" value="1">
-                    Preview Import
+                    Preview Smart Import
                 </button>
             </div>
 
         </form>
+
+        <div class="action-row">
+            <a href="merchant_rules.php" class="btn secondary">
+                Manage Merchant Rules
+            </a>
+        </div>
 
     <?php endif; ?>
 
@@ -264,12 +261,20 @@ require_once 'header.php';
     <?php
     $newCount = 0;
     $duplicateCount = 0;
+    $matchedCount = 0;
+    $fallbackCount = 0;
 
     foreach ($previewRows as $row) {
         if (!empty($row['is_duplicate'])) {
             $duplicateCount++;
         } else {
             $newCount++;
+        }
+
+        if (!empty($row['matched_by_rule'])) {
+            $matchedCount++;
+        } else {
+            $fallbackCount++;
         }
     }
     ?>
@@ -278,12 +283,14 @@ require_once 'header.php';
 
         <div class="table-header-row">
             <div>
-                <h3>Preview Import</h3>
+                <h3>Preview Smart Import</h3>
 
                 <p class="muted">
                     <?= count($previewRows) ?> rows found.
                     <?= $newCount ?> new,
-                    <?= $duplicateCount ?> duplicate.
+                    <?= $duplicateCount ?> duplicate,
+                    <?= $matchedCount ?> auto-categorised,
+                    <?= $fallbackCount ?> fallback.
                 </p>
             </div>
 
@@ -304,6 +311,7 @@ require_once 'header.php';
                         <th>Status</th>
                         <th>Date</th>
                         <th>Category</th>
+                        <th>Match</th>
                         <th>Description</th>
                         <th>Amount</th>
                     </tr>
@@ -326,8 +334,16 @@ require_once 'header.php';
 
                             <td>
                                 <span class="badge">
-                                    <?= e($_SESSION['csv_import_category']) ?>
+                                    <?= e($row['category']) ?>
                                 </span>
+                            </td>
+
+                            <td>
+                                <?php if (!empty($row['matched_by_rule'])): ?>
+                                    <span class="badge">Rule</span>
+                                <?php else: ?>
+                                    <span class="muted">Fallback</span>
+                                <?php endif; ?>
                             </td>
 
                             <td><?= e($row['note']) ?></td>
