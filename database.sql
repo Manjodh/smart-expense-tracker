@@ -52,3 +52,18 @@ CREATE TABLE IF NOT EXISTS categories (
     UNIQUE KEY unique_user_category (user_id, name),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE recurring_expenses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    note VARCHAR(255),
+    frequency VARCHAR(50) NOT NULL DEFAULT 'monthly',
+    start_date DATE NOT NULL,
+    next_due_date DATE NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

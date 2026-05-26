@@ -27,6 +27,7 @@ $pageTitle = $pageTitle ?? 'Smart Expense Tracker';
             <a class="<?= active_nav('reports.php') ?>" href="reports.php">Reports</a>
             <a class="<?= active_nav('add_expense.php') ?>" href="add_expense.php">Add Expense</a>
             <a class="<?= active_nav('import_expenses.php') ?>" href="import_expenses.php">Import CSV</a>
+            <a class="<?= active_nav('recurring_expenses.php') ?>" href="recurring_expenses.php">Recurring</a>
             <a class="<?= active_nav('categories.php') ?>" href="categories.php">Categories</a>
             <a class="<?= active_nav('budgets.php') ?>" href="budgets.php">Budgets</a>
             <a class="<?= active_nav('goals.php') ?>" href="goals.php">Savings Goals</a>
