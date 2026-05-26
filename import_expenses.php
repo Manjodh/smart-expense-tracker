@@ -10,7 +10,6 @@ $userId = current_user_id();
 $categories = get_user_categories($pdo, $userId);
 
 $previewRows = [];
-$rawCsv = '';
 
 function parse_commbank_date($dateValue) {
     $date = DateTime::createFromFormat('d/m/Y', trim($dateValue));
@@ -58,6 +57,29 @@ function parse_commbank_csv($csvContent) {
     return $rows;
 }
 
+function imported_expense_exists($pdo, $userId, $row, $category) {
+    $stmt = $pdo->prepare("
+        SELECT id
+        FROM expenses
+        WHERE user_id = ?
+        AND expense_date = ?
+        AND amount = ?
+        AND category = ?
+        AND note = ?
+        LIMIT 1
+    ");
+
+    $stmt->execute([
+        $userId,
+        $row['expense_date'],
+        $row['amount'],
+        $category,
+        $row['note']
+    ]);
+
+    return (bool)$stmt->fetch();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
     $category = trim($_POST['category'] ?? '');
 
@@ -91,12 +113,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['preview'])) {
         redirect('import_expenses.php');
     }
 
-    $rawCsv = file_get_contents($_FILES['csv_file']['tmp_name']);
-    $previewRows = parse_commbank_csv($rawCsv);
+    $csvContent = file_get_contents($_FILES['csv_file']['tmp_name']);
+    $rows = parse_commbank_csv($csvContent);
 
-    if (!$previewRows) {
+    if (!$rows) {
         flash('error', 'No expense rows were found. Income rows are skipped.');
         redirect('import_expenses.php');
+    }
+
+    foreach ($rows as $row) {
+        $row['is_duplicate'] = imported_expense_exists($pdo, $userId, $row, $category);
+        $previewRows[] = $row;
     }
 
     $_SESSION['csv_import_rows'] = $previewRows;
@@ -133,8 +160,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
     ");
 
     $imported = 0;
+    $skipped = 0;
 
     foreach ($rows as $row) {
+        if (!empty($row['is_duplicate'])) {
+            $skipped++;
+            continue;
+        }
+
+        if (imported_expense_exists($pdo, $userId, $row, $category)) {
+            $skipped++;
+            continue;
+        }
+
         $stmt->execute([
             $userId,
             $row['amount'],
@@ -148,7 +186,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
 
     unset($_SESSION['csv_import_rows'], $_SESSION['csv_import_category']);
 
-    flash('success', $imported . ' expenses imported successfully.');
+    flash(
+        'success',
+        $imported . ' expenses imported. ' . $skipped . ' duplicates skipped.'
+    );
+
     redirect('dashboard.php');
 }
 
@@ -161,6 +203,7 @@ require_once 'header.php';
 
     <p class="muted">
         Upload your CommBank CSV statement. Positive income rows will be skipped.
+        Duplicate expenses will be detected before import.
     </p>
 
     <?php if (!$categories): ?>
@@ -218,21 +261,39 @@ require_once 'header.php';
 
 <?php if ($previewRows): ?>
 
+    <?php
+    $newCount = 0;
+    $duplicateCount = 0;
+
+    foreach ($previewRows as $row) {
+        if (!empty($row['is_duplicate'])) {
+            $duplicateCount++;
+        } else {
+            $newCount++;
+        }
+    }
+    ?>
+
     <div class="table-card">
 
         <div class="table-header-row">
             <div>
                 <h3>Preview Import</h3>
+
                 <p class="muted">
-                    <?= count($previewRows) ?> expense rows found. Review before saving.
+                    <?= count($previewRows) ?> rows found.
+                    <?= $newCount ?> new,
+                    <?= $duplicateCount ?> duplicate.
                 </p>
             </div>
 
-            <form method="POST">
-                <button type="submit" name="confirm_import" value="1">
-                    Confirm Import
-                </button>
-            </form>
+            <?php if ($newCount > 0): ?>
+                <form method="POST">
+                    <button type="submit" name="confirm_import" value="1">
+                        Import <?= $newCount ?> New Expenses
+                    </button>
+                </form>
+            <?php endif; ?>
         </div>
 
         <div class="table-responsive">
@@ -240,6 +301,7 @@ require_once 'header.php';
             <table>
                 <thead>
                     <tr>
+                        <th>Status</th>
                         <th>Date</th>
                         <th>Category</th>
                         <th>Description</th>
@@ -252,6 +314,14 @@ require_once 'header.php';
                     <?php foreach ($previewRows as $row): ?>
 
                         <tr>
+                            <td>
+                                <?php if (!empty($row['is_duplicate'])): ?>
+                                    <span class="warning">Duplicate</span>
+                                <?php else: ?>
+                                    <span class="badge">New</span>
+                                <?php endif; ?>
+                            </td>
+
                             <td><?= e($row['expense_date']) ?></td>
 
                             <td>
@@ -271,6 +341,12 @@ require_once 'header.php';
             </table>
 
         </div>
+
+        <?php if ($newCount === 0): ?>
+            <p class="muted" style="margin-top: 18px;">
+                All rows are duplicates. Nothing new to import.
+            </p>
+        <?php endif; ?>
 
     </div>
 
