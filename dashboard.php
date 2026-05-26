@@ -15,6 +15,21 @@ $category = trim($_GET['category'] ?? '');
 $from = trim($_GET['from'] ?? '');
 $to = trim($_GET['to'] ?? '');
 
+$allowedLimits = [5, 10, 20, 50];
+$limit = (int)($_GET['limit'] ?? 5);
+
+if (!in_array($limit, $allowedLimits, true)) {
+    $limit = 5;
+}
+
+$page = (int)($_GET['page'] ?? 1);
+
+if ($page < 1) {
+    $page = 1;
+}
+
+$offset = ($page - 1) * $limit;
+
 $where = ["user_id = :user_id"];
 $params = ['user_id' => $userId];
 
@@ -62,14 +77,38 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $categoryTotals = $stmt->fetchAll();
 
-$stmt = $pdo->prepare("
+$countStmt = $pdo->prepare("
+    SELECT COUNT(*)
+    FROM expenses
+    WHERE {$whereSql}
+");
+$countStmt->execute($params);
+$totalFilteredExpenses = (int)$countStmt->fetchColumn();
+
+$totalPages = max(1, (int)ceil($totalFilteredExpenses / $limit));
+
+if ($page > $totalPages) {
+    $page = $totalPages;
+    $offset = ($page - 1) * $limit;
+}
+
+$expenseStmt = $pdo->prepare("
     SELECT *
     FROM expenses
     WHERE {$whereSql}
     ORDER BY expense_date DESC, id DESC
+    LIMIT :limit OFFSET :offset
 ");
-$stmt->execute($params);
-$expenses = $stmt->fetchAll();
+
+foreach ($params as $key => $value) {
+    $expenseStmt->bindValue(':' . $key, $value);
+}
+
+$expenseStmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+$expenseStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$expenseStmt->execute();
+
+$expenses = $expenseStmt->fetchAll();
 
 $stmt = $pdo->prepare("
     SELECT 
@@ -104,6 +143,14 @@ $chartValues = [];
 foreach ($categoryTotals as $item) {
     $chartLabels[] = $item['category'];
     $chartValues[] = $item['total'];
+}
+
+function pagination_url($pageNumber, $limitValue) {
+    $query = $_GET;
+    $query['page'] = $pageNumber;
+    $query['limit'] = $limitValue;
+
+    return 'dashboard.php?' . http_build_query($query);
 }
 ?>
 
@@ -258,6 +305,9 @@ foreach ($categoryTotals as $item) {
             >
         </div>
 
+        <input type="hidden" name="page" value="1">
+        <input type="hidden" name="limit" value="<?= e((string)$limit) ?>">
+
         <div class="filter-actions">
             <button type="submit">
                 Filter
@@ -274,7 +324,38 @@ foreach ($categoryTotals as $item) {
 
 <div class="table-card">
 
-    <h3>Recent Expenses</h3>
+    <div class="table-header-row">
+        <div>
+            <h3>Recent Expenses</h3>
+            <p class="muted">
+                Showing <?= $totalFilteredExpenses === 0 ? 0 : $offset + 1 ?>
+                -
+                <?= min($offset + $limit, $totalFilteredExpenses) ?>
+                of <?= $totalFilteredExpenses ?> expenses
+            </p>
+        </div>
+
+        <form method="GET" class="limit-form">
+            <input type="hidden" name="search" value="<?= e($search) ?>">
+            <input type="hidden" name="category" value="<?= e($category) ?>">
+            <input type="hidden" name="from" value="<?= e($from) ?>">
+            <input type="hidden" name="to" value="<?= e($to) ?>">
+            <input type="hidden" name="page" value="1">
+
+            <label>Show</label>
+
+            <select name="limit" onchange="this.form.submit()">
+                <?php foreach ($allowedLimits as $option): ?>
+                    <option
+                        value="<?= $option ?>"
+                        <?= $limit === $option ? 'selected' : '' ?>
+                    >
+                        <?= $option ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
+    </div>
 
     <?php if (!$expenses): ?>
         <p class="muted">No expenses found.</p>
@@ -363,6 +444,39 @@ foreach ($categoryTotals as $item) {
                 </tbody>
 
             </table>
+
+        </div>
+
+        <div class="pagination">
+
+            <?php if ($page > 1): ?>
+                <a class="page-link" href="<?= e(pagination_url($page - 1, $limit)) ?>">
+                    Previous
+                </a>
+            <?php else: ?>
+                <span class="page-link disabled">
+                    Previous
+                </span>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a
+                    class="page-link <?= $page === $i ? 'active' : '' ?>"
+                    href="<?= e(pagination_url($i, $limit)) ?>"
+                >
+                    <?= $i ?>
+                </a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a class="page-link" href="<?= e(pagination_url($page + 1, $limit)) ?>">
+                    Next
+                </a>
+            <?php else: ?>
+                <span class="page-link disabled">
+                    Next
+                </span>
+            <?php endif; ?>
 
         </div>
 
